@@ -1,99 +1,129 @@
-const path = require('path');
+const path = require("path");
 
-const express = require('express');
-const bodyParser = require('body-parser');
-const mongoose = require('mongoose');
-const session = require('express-session');
-const MongoDBStore = require('connect-mongodb-session')(session)
-const csrf = require('csurf');
-const flash = require('connect-flash')
+const express = require("express");
+const bodyParser = require("body-parser");
+const mongoose = require("mongoose");
+const session = require("express-session");
+const MongoDBStore = require("connect-mongodb-session")(session);
+const csrf = require("csurf");
+const flash = require("connect-flash");
+const multer = require("multer");
+const crypto = require('crypto')
 
-const errorController = require('./controllers/error');
-const User = require('./models/user');
+const errorController = require("./controllers/error");
+const User = require("./models/user");
 
 const app = express();
 
-const MONGODB_URI = 'mongodb+srv://syler:159753258@cluster0.okpks.mongodb.net/shop'
+const MONGODB_URI =
+  "mongodb+srv://syler:159753258@cluster0.okpks.mongodb.net/shop";
 
 const store = new MongoDBStore({
-  uri:MONGODB_URI,
-  collection:'sessions'
+  uri: MONGODB_URI,
+  collection: "sessions",
 });
 
-const csrfProtection = csrf({})
- 
-app.set('view engine', 'ejs');
-app.set('views', 'views');
+const csrfProtection = csrf({});
 
-const adminRoutes = require('./routes/admin');
-const shopRoutes = require('./routes/shop');
-const authRoutes = require('./routes/auth');
+app.set("view engine", "ejs");
+app.set("views", "views");
+
+const adminRoutes = require("./routes/admin");
+const shopRoutes = require("./routes/shop");
+const authRoutes = require("./routes/auth");
+
+const fileStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "images");
+  },
+  filename: (req, file, cb) => {
+    var id = crypto.randomBytes(20).toString('hex');
+    cb(null, id + "-" + file.originalname);
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  if (
+    file.mimetype === "image/png" ||
+    file.mimetype === "image/jpg" ||
+    file.mimetype === "image/jpeg"
+  ) {
+    cb(null, true);
+  } else {
+    cb(null, false);
+  }
+};
+
 
 app.use(bodyParser.urlencoded({ extended: false }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(
+  multer({ storage: fileStorage, fileFilter: fileFilter }).single("image")
+);
 
-app.use(session({
-  secret:'my secret',
-  resave:false,
-  saveUninitialized:false,
-  store:store
-}))
+app.use(express.static(path.join(__dirname, "public")));
+app.use('/images',express.static(path.join(__dirname, "images")));
+
+app.use(
+  session({
+    secret: "my secret",
+    resave: false,
+    saveUninitialized: false,
+    store: store,
+  })
+);
 
 app.use(csrfProtection);
 app.use(flash());
 
-app.use((req, res, next)=> { 
+app.use((req, res, next) => {
+  //console.log(req.session)
   res.locals.isAuthenticated = req.session.isLoggedIn;
   res.locals.csrfToken = req.csrfToken();
   next();
-})
+});
 
-
-app.use((req,res,next)=>{
+app.use((req, res, next) => {
   //throw new Error('Sync Dummy !')
-  if (!req.session.user)
-  {
+  if (!req.session.user) {
     return next();
   }
   User.findById(req.session.user._id)
-    .then(user => {
+    .then((user) => {
       //throw new Error('Dummy !')
-      if ( !user ) {
+      if (!user) {
         return next();
       }
-      req.user = user
+      req.user = user;
       next();
     })
-    .catch(err => {
-      next(new Error(err))
+    .catch((err) => {
+      next(new Error(err));
     });
-})
+});
 
-app.use('/admin', adminRoutes);
+app.use("/admin", adminRoutes);
 app.use(shopRoutes);
 app.use(authRoutes);
 
-app.get('/500',errorController.get500);
-
+app.get("/500", errorController.get500);
 
 app.use(errorController.get404);
 
-app.use( (error,req,res,next) => {
-  res.status(500).render('500', {
-    pageTitle: 'Error !',
-    path: '/500',
+app.use((error, req, res, next) => {
+  //console.log(error)
+  //console.log('session object ??',req.session)
+  res.status(500).render("500", {
+    pageTitle: "Error !",
+    path: "/500",
     isAuthenticated: req.session.isLoggedIn
   });
-  
-
 });
+
 mongoose
-  .connect(
-    MONGODB_URI
-  )
-  .then(result => {
+  .connect(MONGODB_URI)
+  .then((result) => {
     app.listen(3000);
   })
-  .catch(err => {
+  .catch((err) => {
     console.log(err);
   });
